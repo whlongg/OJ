@@ -21,7 +21,7 @@ from django.utils.text import format_lazy
 from django.utils.translation import gettext_lazy as _, ngettext_lazy
 
 from judge.models import BlogPost, Contest, ContestAnnouncement, ContestProblem, Language, LanguageLimit, \
-    Organization, Problem, Profile, Solution, Submission, Tag, WebAuthnCredential
+    Organization, Problem, Profile, Solution, Submission, Tag, URLShortener, WebAuthnCredential
 from judge.utils.subscription import newsletter_id
 from judge.widgets import AceWidget, HeavySelect2MultipleWidget, HeavySelect2Widget, MartorWidget, \
     Select2MultipleWidget, Select2Widget
@@ -830,3 +830,85 @@ class CompareSubmissionsForm(Form):
     user = forms.ChoiceField(
         widget=HeavySelect2MultipleWidget(data_view='profile_select2', attrs={'style': 'width: 100%'}),
     )
+
+
+class URLShortenerForm(ModelForm):
+    auto_generate = forms.BooleanField(
+        required=False,
+        initial=False,
+        label=_('Auto-generate short code'),
+        help_text=_('Automatically generate a random 5-character short code'),
+    )
+
+    class Meta:
+        model = URLShortener
+        fields = ['short_code', 'long_url', 'description', 'organization']
+        widgets = {
+            'short_code': forms.TextInput(attrs={
+                'placeholder': _('e.g., vnoi-roadmap-2024'),
+                'pattern': '[a-zA-Z0-9_-]+',
+                'maxlength': '30',
+            }),
+            'long_url': forms.URLInput(attrs={
+                'placeholder': _('https://example.com/very/long/url'),
+            }),
+            'description': forms.Textarea(attrs={
+                'rows': 3,
+                'placeholder': _('Optional: Add a description for this shortened URL'),
+            }),
+            'organization': HeavySelect2Widget(
+                data_view='organization_select2',
+                attrs={'style': 'width: 100%'},
+            ),
+        }
+        labels = {
+            'short_code': _('Short code'),
+            'long_url': _('Destination URL'),
+            'description': _('Description'),
+            'organization': _('Organization (optional)'),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Make short_code optional initially (will be generated if auto_generate is checked)
+        self.fields['short_code'].required = False
+        self.fields['organization'].required = False
+
+    def clean(self):
+        cleaned_data = super().clean()
+        auto_generate = cleaned_data.get('auto_generate', False)
+        short_code = cleaned_data.get('short_code', '').strip()
+
+        if auto_generate:
+            # Generate random code
+            generated_code = URLShortener.generate_random_code(length=5)
+            if generated_code is None:
+                raise ValidationError(_('Unable to generate a unique short code. Please try again.'))
+            cleaned_data['short_code'] = generated_code
+        elif not short_code:
+            # If not auto-generating and no code provided, error
+            raise ValidationError({
+                'short_code': _('Please provide a short code or check "Auto-generate"'),
+            })
+
+        return cleaned_data
+
+    def clean_short_code(self):
+        code = self.cleaned_data.get('short_code', '').strip()
+
+        # If empty, it's OK (will be handled in clean())
+        if not code:
+            return code
+
+        # Check if this is an edit (instance exists) or create
+        if self.instance and self.instance.pk:
+            # Editing existing - allow same code
+            existing = URLShortener.objects.filter(short_code=code).exclude(pk=self.instance.pk)
+            if existing.exists():
+                raise ValidationError(_('This short code is already in use'))
+        else:
+            # Creating new - check uniqueness
+            if URLShortener.objects.filter(short_code=code).exists():
+                raise ValidationError(_('This short code is already in use'))
+
+        return code

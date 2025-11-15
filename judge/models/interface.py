@@ -1,9 +1,12 @@
 import re
+import random
+import string
 
 from django.conf import settings
+from django.contrib.sites.models import Site
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import CASCADE
+from django.db.models import CASCADE, F
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -12,7 +15,7 @@ from mptt.models import MPTTModel
 
 from judge.models.profile import Organization, Profile
 
-__all__ = ['MiscConfig', 'validate_regex', 'NavigationBar', 'BlogPost']
+__all__ = ['MiscConfig', 'validate_regex', 'NavigationBar', 'BlogPost', 'URLShortener']
 
 
 class MiscConfig(models.Model):
@@ -144,3 +147,164 @@ class BlogVote(models.Model):
         unique_together = ['voter', 'blog']
         verbose_name = _('blog vote')
         verbose_name_plural = _('blog votes')
+
+
+def validate_short_code(code):
+    """Validate short code format: only alphanumeric, dash, and underscore."""
+    if not re.match(r'^[a-zA-Z0-9_-]+$', code):
+        raise ValidationError(_('Short code can only contain letters, numbers, dashes, and underscores'))
+
+    # Reserved keywords that cannot be used
+    reserved = [
+        'admin', 'api', 'problem', 'problems', 'contest', 'contests',
+        'user', 'users', 'post', 'posts', 'submission', 'submissions',
+        'organization', 'organizations', 'shortener', 's', 'about',
+        'status', 'runtimes', 'language', 'languages', 'judge', 'judges',
+    ]
+    if code.lower() in reserved:
+        raise ValidationError(_('This short code is reserved by the system'))
+
+
+class URLShortener(models.Model):
+    # Core fields
+    short_code = models.CharField(
+        max_length=30,
+        unique=True,
+        db_index=True,
+        validators=[validate_short_code],
+        verbose_name=_('short code'),
+        help_text=_('Custom short URL identifier (max 30 characters, letters/numbers/dash/underscore only)'),
+    )
+    long_url = models.URLField(
+        max_length=2000,
+        verbose_name=_('destination URL'),
+        help_text=_('The full URL to redirect to'),
+    )
+
+    # Ownership
+    creator = models.ForeignKey(
+        Profile,
+        on_delete=CASCADE,
+        related_name='shortened_urls',
+        verbose_name=_('creator'),
+    )
+    organization = models.ForeignKey(
+        Organization,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='shortened_urls',
+        verbose_name=_('organization'),
+        help_text=_('Optional: Associate this URL with an organization'),
+    )
+
+    # Site support (for multi-site/subdomain)
+    site = models.ForeignKey(
+        Site,
+        on_delete=CASCADE,
+        default=settings.SITE_ID,
+        verbose_name=_('site'),
+        help_text=_('Site/domain where this short URL is active'),
+    )
+
+    # Metadata
+    description = models.TextField(
+        blank=True,
+        verbose_name=_('description'),
+        help_text=_('Optional description or notes about this URL'),
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_('created at'))
+    updated_at = models.DateTimeField(auto_now=True, verbose_name=_('updated at'))
+
+    # Analytics
+    click_count = models.IntegerField(
+        default=0,
+        verbose_name=_('click count'),
+        help_text=_('Number of times this short URL has been accessed'),
+    )
+    last_accessed = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_('last accessed'),
+    )
+
+    # Status
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name=_('active'),
+        help_text=_('Inactive URLs will return 404'),
+    )
+
+    class Meta:
+        permissions = (
+            ('create_url_shortener', _('Can create shortened URLs')),
+            ('view_all_url_stats', _('Can view all URL statistics')),
+        )
+        verbose_name = _('URL shortener')
+        verbose_name_plural = _('URL shorteners')
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['short_code', 'site']),
+            models.Index(fields=['creator', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.short_code} → {self.long_url[:50]}{"..." if len(self.long_url) > 50 else ""}'
+
+    def get_absolute_url(self):
+        return reverse('url_shortener_redirect', args=[self.short_code])
+
+    def get_full_short_url(self):
+        """Get the complete short URL including domain."""
+        domain = self.site.domain
+        path = self.get_absolute_url()
+        return f'https://{domain}{path}'
+
+    def increment_clicks(self):
+        """Atomically increment click count and update last accessed time."""
+        URLShortener.objects.filter(pk=self.pk).update(
+            click_count=F('click_count') + 1,
+            last_accessed=timezone.now(),
+        )
+
+    @staticmethod
+    def generate_random_code(length=5, max_attempts=10):
+        """
+        Generate a random short code with smart uniqueness checking.
+
+        Args:
+            length: Length of the random code (default 5)
+            max_attempts: Maximum number of attempts to find a unique code
+
+        Returns:
+            A unique random short code, or None if failed after max_attempts
+        """
+        chars = string.ascii_lowercase + string.digits
+
+        for attempt in range(max_attempts):
+            code = ''.join(random.choice(chars) for _ in range(length))
+
+            # Fast uniqueness check using exists()
+            if not URLShortener.objects.filter(short_code=code).exists():
+                return code
+
+        # If still can't find unique code after max_attempts, try with longer length
+        if length < 10:
+            return URLShortener.generate_random_code(length=length + 1, max_attempts=max_attempts)
+
+        return None
+
+    def can_edit(self, user):
+        """Check if user can edit this URL shortener."""
+        if not user.is_authenticated:
+            return False
+
+        # Creator can always edit
+        if self.creator_id == user.profile.id:
+            return True
+
+        # Users with view_all_url_stats permission can edit all
+        if user.has_perm('judge.view_all_url_stats'):
+            return True
+
+        return False

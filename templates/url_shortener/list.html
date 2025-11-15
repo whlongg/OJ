@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title_ruler %}{% endblock %}
+
+{% block body %}
+    <div class="content-description">
+        <h2>{{ _('URL Shorteners') }}</h2>
+
+        {% if can_create %}
+        <div style="margin-bottom: 1em;">
+            <a href="{{ url('url_shortener_create') }}" class="button">
+                <i class="fa fa-plus"></i> {{ _('Create Short URL') }}
+            </a>
+        </div>
+        {% endif %}
+
+        {% if shorteners %}
+        <table class="table striped">
+            <thead>
+                <tr>
+                    <th>{{ _('Short Code') }}</th>
+                    <th>{{ _('Destination URL') }}</th>
+                    <th>{{ _('Description') }}</th>
+                    <th>{{ _('Clicks') }}</th>
+                    <th>{{ _('Created') }}</th>
+                    <th>{{ _('Actions') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for shortener in shorteners %}
+                <tr>
+                    <td>
+                        <a href="{{ shortener.get_absolute_url() }}" target="_blank">
+                            <strong>{{ shortener.short_code }}</strong>
+                        </a>
+                        <br>
+                        <small style="color: #888;">
+                            {{ request.scheme }}://{{ site.domain }}{{ shortener.get_absolute_url() }}
+                        </small>
+                    </td>
+                    <td>
+                        <a href="{{ shortener.long_url }}" target="_blank" style="word-break: break-all;">
+                            {{ shortener.long_url[:80] }}{% if shortener.long_url|length > 80 %}...{% endif %}
+                        </a>
+                    </td>
+                    <td>
+                        {% if shortener.description %}
+                            {{ shortener.description[:100] }}{% if shortener.description|length > 100 %}...{% endif %}
+                        {% else %}
+                            <em style="color: #999;">{{ _('No description') }}</em>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: center;">
+                        <strong>{{ shortener.click_count }}</strong>
+                    </td>
+                    <td>
+                        {{ relative_time(shortener.created_at) }}
+                    </td>
+                    <td>
+                        {% if shortener.can_edit(request.user) %}
+                        <a href="{{ url('url_shortener_edit', shortener.short_code) }}" class="button small">
+                            {{ _('Edit') }}
+                        </a>
+                        <a href="{{ url('url_shortener_delete', shortener.short_code) }}"
+                           class="button small"
+                           onclick="return confirm('{{ _('Are you sure you want to delete this URL shortener?') }}');">
+                            {{ _('Delete') }}
+                        </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if page_obj and page_obj.num_pages > 1 %}
+        <div style="margin-top: 1em;">
+            {% include "list-pages.html" %}
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div style="padding: 2em; text-align: center; color: #999;">
+            <p>{{ _('No URL shorteners found.') }}</p>
+            {% if can_create %}
+            <p>
+                <a href="{{ url('url_shortener_create') }}" class="button">
+                    <i class="fa fa-plus"></i> {{ _('Create your first short URL') }}
+                </a>
+            </p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+{% endblock %}

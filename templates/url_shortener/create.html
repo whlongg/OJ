@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block title_ruler %}{% endblock %}
+
+{% block media %}
+    <style>
+        .url-shortener-form {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .form-group {
+            margin-bottom: 1.5em;
+        }
+        .form-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 0.5em;
+        }
+        .form-group input[type="text"],
+        .form-group input[type="url"],
+        .form-group textarea {
+            width: 100%;
+            padding: 0.5em;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .form-group textarea {
+            min-height: 80px;
+        }
+        .help-text {
+            display: block;
+            margin-top: 0.3em;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .errorlist {
+            color: #d32f2f;
+            list-style: none;
+            padding: 0;
+            margin: 0.5em 0;
+        }
+        .url-preview {
+            background: #f5f5f5;
+            padding: 1em;
+            border-radius: 4px;
+            margin-top: 1em;
+            word-break: break-all;
+        }
+        .checkbox-group {
+            margin-top: 1em;
+        }
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 0.5em;
+        }
+    </style>
+{% endblock %}
+
+{% block js_media %}
+    <script type="text/javascript">
+        $(document).ready(function() {
+            var $shortCodeInput = $('#id_short_code');
+            var $autoGenCheckbox = $('#id_auto_generate');
+            var $preview = $('#url-preview-code');
+
+            // Update preview
+            function updatePreview() {
+                var code = $shortCodeInput.val() || '{{ _("your-code") }}';
+                $preview.text(code);
+            }
+
+            $shortCodeInput.on('input', updatePreview);
+            updatePreview();
+
+            // Auto-generate checkbox handling
+            $autoGenCheckbox.on('change', function() {
+                if ($(this).is(':checked')) {
+                    $shortCodeInput.prop('disabled', true);
+                    $shortCodeInput.val('{{ _("(will be generated)") }}');
+                } else {
+                    $shortCodeInput.prop('disabled', false);
+                    $shortCodeInput.val('');
+                    $shortCodeInput.focus();
+                }
+                updatePreview();
+            });
+        });
+    </script>
+{% endblock %}
+
+{% block body %}
+    <div class="content-description">
+        <h2>{{ _('Create Short URL') }}</h2>
+
+        <div class="url-shortener-form">
+            <form method="post">
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                <div class="form-group">
+                    <ul class="errorlist">
+                        {% for error in form.non_field_errors %}
+                        <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <div class="form-group">
+                    {{ form.long_url.label_tag() }}
+                    {{ form.long_url }}
+                    {% if form.long_url.errors %}
+                    <ul class="errorlist">
+                        {% for error in form.long_url.errors %}
+                        <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% if form.long_url.help_text %}
+                    <span class="help-text">{{ form.long_url.help_text }}</span>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    {{ form.short_code.label_tag() }}
+                    {{ form.short_code }}
+                    {% if form.short_code.errors %}
+                    <ul class="errorlist">
+                        {% for error in form.short_code.errors %}
+                        <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% if form.short_code.help_text %}
+                    <span class="help-text">{{ form.short_code.help_text }}</span>
+                    {% endif %}
+
+                    <div class="checkbox-group">
+                        {{ form.auto_generate }}
+                        {{ form.auto_generate.label_tag() }}
+                        {% if form.auto_generate.help_text %}
+                        <span class="help-text">{{ form.auto_generate.help_text }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    {{ form.description.label_tag() }}
+                    {{ form.description }}
+                    {% if form.description.errors %}
+                    <ul class="errorlist">
+                        {% for error in form.description.errors %}
+                        <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% if form.description.help_text %}
+                    <span class="help-text">{{ form.description.help_text }}</span>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    {{ form.organization.label_tag() }}
+                    {{ form.organization }}
+                    {% if form.organization.errors %}
+                    <ul class="errorlist">
+                        {% for error in form.organization.errors %}
+                        <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% if form.organization.help_text %}
+                    <span class="help-text">{{ form.organization.help_text }}</span>
+                    {% endif %}
+                </div>
+
+                <div class="url-preview">
+                    <strong>{{ _('Preview:') }}</strong><br>
+                    {{ request.scheme }}://{{ site.domain }}/s/<span id="url-preview-code">your-code</span>/
+                </div>
+
+                <div class="form-group" style="margin-top: 2em;">
+                    <button type="submit" class="button">
+                        <i class="fa fa-check"></i> {{ _('Create Short URL') }}
+                    </button>
+                    <a href="{{ url('url_shortener_list') }}" class="button">
+                        {{ _('Cancel') }}
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}

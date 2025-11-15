@@ -10,7 +10,7 @@ from mptt.admin import DraggableMPTTAdmin
 from reversion.admin import VersionAdmin
 
 from judge.dblock import LockModel
-from judge.models import NavigationBar
+from judge.models import NavigationBar, URLShortener
 from judge.widgets import AdminHeavySelect2MultipleWidget, AdminHeavySelect2Widget, AdminMartorWidget
 
 
@@ -163,3 +163,49 @@ class LogEntryAdmin(admin.ModelAdmin):
 
     def queryset(self, request):
         return super().queryset(request).prefetch_related('content_type')
+
+
+class URLShortenerAdmin(VersionAdmin):
+    list_display = ('short_code', 'long_url_truncated', 'creator_link', 'organization',
+                    'click_count', 'is_active', 'created_at')
+    list_filter = ('is_active', 'site', 'created_at')
+    search_fields = ('short_code', 'long_url', 'creator__user__username', 'description')
+    readonly_fields = ('click_count', 'created_at', 'updated_at', 'last_accessed', 'full_short_url')
+    ordering = ('-created_at',)
+    date_hierarchy = 'created_at'
+
+    fieldsets = (
+        (_('URL Information'), {
+            'fields': ('short_code', 'long_url', 'description', 'full_short_url'),
+        }),
+        (_('Ownership'), {
+            'fields': ('creator', 'organization', 'site'),
+        }),
+        (_('Statistics'), {
+            'fields': ('click_count', 'last_accessed', 'is_active'),
+        }),
+        (_('Metadata'), {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    @admin.display(description=_('destination URL'))
+    def long_url_truncated(self, obj):
+        max_length = 60
+        if len(obj.long_url) > max_length:
+            return obj.long_url[:max_length] + '...'
+        return obj.long_url
+
+    @admin.display(description=_('creator'), ordering='creator__user__username')
+    def creator_link(self, obj):
+        return format_html('<a href="{}">{}</a>',
+                          reverse('admin:judge_profile_change', args=[obj.creator.id]),
+                          obj.creator.user.username)
+
+    @admin.display(description=_('full short URL'))
+    def full_short_url(self, obj):
+        if obj.pk:
+            url = obj.get_full_short_url()
+            return format_html('<a href="{0}" target="_blank">{0}</a>', url)
+        return '-'
