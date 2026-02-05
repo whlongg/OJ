@@ -10,7 +10,8 @@ from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from django.db import transaction
-from django.db.models import BooleanField, Case, F, Prefetch, Q, When
+from django.db.models import BooleanField, Case, Exists, F, IntegerField, Min, OuterRef, Prefetch, Q, Value, When
+from django.db.models.functions import Coalesce
 from django.db.utils import ProgrammingError
 from django.http import Http404, HttpResponse, HttpResponseForbidden, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
@@ -560,24 +561,38 @@ class ProblemList(QueryStringSortMixin, TitleMixin, SolvedProblemMixin, Infinite
             queryset = queryset.order_by(self.order.replace('editorial', 'has_public_editorial'), 'id')
         elif sort_key == 'solved':
             if self.request.user.is_authenticated:
-                profile = self.request.profile
-                solved = user_completed_ids(profile)
-                attempted = user_attempted_ids(profile)
+                queryset = queryset.annotate(
+                    is_solved=Exists(
+                        Submission.objects.filter(
+                            user=self.request.profile,
+                            problem=OuterRef('pk'),
+                            result='AC',
+                            case_points__gte=F('case_total'),
+                        )
+                    ),
+                    is_attempted=Exists(
+                        Submission.objects.filter(
+                            user=self.request.profile,
+                            problem=OuterRef('pk'),
+                        )
+                    ),
+                )
 
-                def _solved_sort_order(problem):
-                    if problem.id in solved:
-                        return 1
-                    if problem.id in attempted:
-                        return 0
-                    return -1
-
-                queryset = list(queryset)
-                queryset.sort(key=_solved_sort_order, reverse=self.order.startswith('-'))
+                # 2 = Solved, 1 = Attempted, 0 = Neither
+                queryset = queryset.annotate(
+                    solve_status=Case(
+                        When(is_solved, then=Value(2)),
+                        When(is_attempted, then=Value(1)),
+                        default=Value(0),
+                        output_field=IntegerField(),
+                    )
+                )
+                queryset = queryset.order_by(self.order.replace('solved', 'solve_status'), 'id')
         elif sort_key == 'type':
             if self.show_types:
-                queryset = list(queryset)
-                queryset.sort(key=lambda problem: problem.types_list[0] if problem.types_list else '',
-                              reverse=self.order.startswith('-'))
+                queryset = queryset.annotate(
+                    first_type_name=Coalesce(Min('types__full_name'), Value(''))
+                ).order_by(self.order.replace('type', 'first_type_name'), 'id')
         return queryset
 
     @cached_property
