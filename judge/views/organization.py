@@ -400,6 +400,10 @@ class CreateOrganization(PermissionRequiredMixin, TitleMixin, CreateView):
             # short_name is show in ranking
             org.short_name = org.slug[:20]
             org.free_credit = org.monthly_free_credit_limit
+            org.storage_expiration = (
+                timezone.now().date() +
+                timezone.timedelta(days=settings.VNOJ_ORGANIZATION_DEFAULT_STORAGE_EXPIRATION_DAYS)
+            )
             add_admin_to_group(form)
             # don't need to org.save, the form.save() in `add_admin_to_group` will do it
             return HttpResponseRedirect(self.get_success_url())
@@ -809,6 +813,9 @@ class OrganizationStorageDashboard(LoginRequiredMixin, TitleMixin, AdminOrganiza
         context['problem_count'] = org.get_current_problem_count()
         context['storage_exceeded'] = context['total_storage'] > org.get_max_storage()
         context['problem_limit_reached'] = context['problem_count'] >= org.get_max_problems()
+        context['storage_expiration'] = org.storage_expiration
+        context['storage_expired'] = org.is_storage_expired()
+        context['days_remaining'] = org.get_days_remaining()
 
         context.update(paginate_query_context(self.request))
 

@@ -43,7 +43,23 @@
             <p style="margin: 0.25em 0;">
                 {{ _('Problems:') }} {{ problem_count }} / {{ max_problems }}
             </p>
+            {% if storage_expiration %}
+            <p style="margin: 0.25em 0;">
+                {{ _('Plan expires:') }} {{ storage_expiration }}
+                {% if storage_expired %}
+                    — <strong style="color: #dc3545;">{{ _('Expired') }}</strong>
+                {% else %}
+                    ({{ ngettext('%(count)d day remaining', '%(count)d days remaining', days_remaining) % {'count': days_remaining} }})
+                {% endif %}
+            </p>
+            {% endif %}
         </div>
+
+        {% if storage_expired %}
+        <div class="quota-warning">
+            {{ _('Storage plan has expired! Please contact an administrator to renew.') }}
+        </div>
+        {% endif %}
 
         {% if storage_exceeded %}
         <div class="quota-warning">
