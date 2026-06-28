@@ -42,6 +42,7 @@ from judge.utils.problems import hot_problems, user_attempted_ids, \
 from judge.utils.strings import safe_float_or_none, safe_int_or_none
 from judge.utils.tickets import own_ticket_filter
 from judge.utils.views import QueryStringSortMixin, SingleObjectFormView, TitleMixin, add_file_response, generic_message
+from judge.utils.tus import resolve_tus_upload
 from judge.views.widgets import pdf_statement_uploader, submission_uploader
 
 recjk = re.compile(r'[\u2E80-\u2E99\u2E9B-\u2EF3\u2F00-\u2FD5\u3005\u3007\u3021-\u3029\u3038-\u303A\u303B\u3400-\u4DB5'
@@ -269,6 +270,9 @@ class ProblemSubmitMixin:
             'submissions_left': self.remaining_submission_count,
             'ACE_URL': settings.ACE_URL,
             'default_lang': self.default_language,
+            'TUSD_ENDPOINT_URL': settings.TUSD_ENDPOINT_URL,
+            'TUS_THRESHOLD_SIZE': settings.TUS_THRESHOLD_SIZE,
+            'TUS_CHUNK_SIZE': settings.TUS_CHUNK_SIZE,
         }
 
     def handle_submission_post(self, request):
@@ -347,12 +351,20 @@ class ProblemSubmitMixin:
             else:
                 new_submission.save()
 
-            submission_file = form.files.get('submission_file', None)
-            source_url = submission_uploader(
-                submission_file=submission_file,
-                problem_code=new_submission.problem.code,
-                user_id=new_submission.user.user.id,
-            ) if submission_file else ''
+            tus_upload_id = request.POST.get('tus_upload_id', '').strip()
+            if tus_upload_id:
+                source_url = resolve_tus_upload(
+                    tus_upload_id,
+                    new_submission.problem.code,
+                    new_submission.user.user.id,
+                )
+            else:
+                submission_file = form.files.get('submission_file', None)
+                source_url = submission_uploader(
+                    submission_file=submission_file,
+                    problem_code=new_submission.problem.code,
+                    user_id=new_submission.user.user.id,
+                ) if submission_file else ''
 
             source = SubmissionSource(submission=new_submission, source=form.cleaned_data['source'] + source_url)
             source.save()

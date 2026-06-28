@@ -13,7 +13,7 @@ from judge.feed import AtomBlogFeed, AtomCommentFeed, AtomProblemFeed, BlogFeed,
 from judge.sitemap import sitemaps
 from judge.views import TitledTemplateView, api, blog, comment, contests, language, license, mailgun, organization, \
     preview, problem, problem_download, problem_manage, ranked_submission, register, stats, status, submission, tag, \
-    tasks, ticket, two_factor, user, widgets
+    tasks, ticket, tus, two_factor, user, widgets
 from judge.views.magazine import MagazinePage
 from judge.views.misc_config import MiscConfigEdit
 from judge.views.problem_data import ProblemDataView, ProblemSubmissionDiff, \
@@ -440,6 +440,7 @@ urlpatterns = [
     path('magazine/', MagazinePage.as_view(), name='magazine'),
 
     path('misc_config/', MiscConfigEdit.as_view(), name='misc_config'),
+    path('api/tus-hook/', tus.tus_hook, name='tus_hook'),
 ]
 
 

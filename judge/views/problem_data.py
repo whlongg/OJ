@@ -237,6 +237,9 @@ class ProblemDataView(TitleMixin, ProblemManagerMixin):
             add_quota_context(problem.organization, context)
 
         context['quota_warning_suffix'] = settings.VNOJ_QUOTA_WARNING_SUFFIX
+        context['TUSD_ENDPOINT_URL'] = settings.TUSD_ENDPOINT_URL
+        context['TUS_THRESHOLD_SIZE'] = settings.TUS_THRESHOLD_SIZE
+        context['TUS_CHUNK_SIZE'] = settings.TUS_CHUNK_SIZE
         return context
 
     def check_valid(self, data_form, cases_formset):
@@ -270,21 +273,45 @@ class ProblemDataView(TitleMixin, ProblemManagerMixin):
 
     def post(self, request, *args, **kwargs):
         self.object = problem = self.get_object()
-        data_form = self.get_data_form(post=True)
-        valid_files = self.get_valid_files(data_form.instance, post=True)
-        data_form.zip_valid = valid_files is not False
-        cases_formset = self.get_case_formset(valid_files, post=True)
-        if self.check_valid(data_form, cases_formset):
-            data = data_form.save()
-            for case in cases_formset.save(commit=False):
-                case.dataset_id = problem.id
-                case.save()
-            for case in cases_formset.deleted_objects:
-                case.delete()
-            ProblemDataCompiler.generate(problem, data, problem.cases.order_by('order'), valid_files)
-            return HttpResponseRedirect(request.get_full_path())
-        return self.render_to_response(self.get_context_data(data_form=data_form, cases_formset=cases_formset,
-                                                             valid_files=valid_files))
+        tus_upload_id = request.POST.get('tus_upload_id', '').strip()
+        tus_file = None
+        if tus_upload_id:
+            try:
+                from judge.utils.tus import get_tus_upload_file
+                tus_file = get_tus_upload_file(tus_upload_id)
+                request.FILES['problem-data-zipfile'] = tus_file
+            except ValueError:
+                pass
+
+        try:
+            data_form = self.get_data_form(post=True)
+            valid_files = self.get_valid_files(data_form.instance, post=True)
+            data_form.zip_valid = valid_files is not False
+            cases_formset = self.get_case_formset(valid_files, post=True)
+            if self.check_valid(data_form, cases_formset):
+                data = data_form.save()
+                for case in cases_formset.save(commit=False):
+                    case.dataset_id = problem.id
+                    case.save()
+                for case in cases_formset.deleted_objects:
+                    case.delete()
+                ProblemDataCompiler.generate(problem, data, problem.cases.order_by('order'), valid_files)
+                return HttpResponseRedirect(request.get_full_path())
+            return self.render_to_response(self.get_context_data(data_form=data_form, cases_formset=cases_formset,
+                                                                 valid_files=valid_files))
+        finally:
+            if tus_file:
+                tus_file.close()
+                if hasattr(tus_file, '_tus_data_path') and os.path.exists(tus_file._tus_data_path):
+                    try:
+                        os.remove(tus_file._tus_data_path)
+                    except OSError:
+                        pass
+                if hasattr(tus_file, '_tus_info_path') and os.path.exists(tus_file._tus_info_path):
+                    try:
+                        os.remove(tus_file._tus_info_path)
+                    except OSError:
+                        pass
 
     put = post
 

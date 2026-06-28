@@ -1,5 +1,6 @@
 <script type="text/javascript" src="{{ ACE_URL }}/ace.js"></script>
 {{ form.media.js }}
+<script src="https://cdn.jsdelivr.net/npm/tus-js-client@4/dist/tus.min.js"></script>
 {% compress js %}
     <script type="text/javascript">
         $(function () {
@@ -136,11 +137,15 @@
                     alert({{ _('Your source code must contain at most 65536 characters.')|htmltojs }});
                     event.preventDefault();
                     $('#problem_submit').find(':submit').attr('disabled', false);
+                    return;
                 }
                 
                 obj = document.getElementById('id_language');
                 fileonly = obj.options[obj.selectedIndex].getAttribute('data-fileonly');
                 if (fileonly == 'True') {
+                    if ($('#tus_upload_id').val()) {
+                        return;
+                    }
                     file_size_limit = obj.options[obj.selectedIndex].getAttribute('data-file-size');
                     let fileInput = $('#file_upload')[0];
                     if (fileInput.files.length > 0) {
@@ -150,6 +155,42 @@
                             alert({{ _('`Maximum file size is ${file_size_limit}MB.`') }});
                             event.preventDefault();
                             $('#problem_submit').find(':submit').attr('disabled', false);
+                            return;
+                        }
+
+                        let thresholdBytes = parseInt("{{ TUS_THRESHOLD_SIZE }}");
+                        if (file.size >= thresholdBytes) {
+                            event.preventDefault();
+                            let submitBtn = $('#problem_submit').find(':submit');
+                            submitBtn.attr('disabled', true);
+                            $('#tus-progress').show();
+
+                            let upload = new tus.Upload(file, {
+                                endpoint: '{{ TUSD_ENDPOINT_URL }}',
+                                chunkSize: parseInt("{{ TUS_CHUNK_SIZE }}"),
+                                retryDelays: [0, 1000, 3000, 5000],
+                                metadata: {
+                                    filename: file.name,
+                                    filetype: file.type || 'application/octet-stream'
+                                },
+                                onProgress: function (bytesUploaded, bytesTotal) {
+                                    let pct = Math.round(bytesUploaded / bytesTotal * 100);
+                                    $('#tus-progress-bar').val(pct);
+                                    $('#tus-progress-label').text(pct + '%');
+                                },
+                                onSuccess: function () {
+                                    let uploadId = upload.url.split('/').pop();
+                                    $('#tus_upload_id').val(uploadId);
+                                    $('#file_upload').val('');
+                                    $('#problem_submit')[0].submit();
+                                },
+                                onError: function (error) {
+                                    alert('Upload failed: ' + error.message);
+                                    submitBtn.attr('disabled', false);
+                                    $('#tus-progress').hide();
+                                }
+                            });
+                            upload.start();
                         }
                     }
                 }

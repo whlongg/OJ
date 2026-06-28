@@ -46,6 +46,11 @@
             {{ form.submission_file.errors }}
             <input id="file_upload" type="file" name="submission_file" style="display: none;" onchange="handleFileChange()">
             <label for="file_upload" id="file_drag"></label>
+            <input type="hidden" name="tus_upload_id" id="tus_upload_id">
+            <div id="tus-progress" class="tus-progress" style="display:none; margin-top: 10px;">
+                <progress id="tus-progress-bar" value="0" max="100" style="width:100%"></progress>
+                <span id="tus-progress-label">0%</span>
+            </div>
         </div>
         <hr>
         {% if not no_judges %}

@@ -6,6 +6,7 @@
     <script type="text/javascript" src="{{ static('vnoj/jquery-ui/jquery-ui.min.js') }}"></script>
     <script type="text/javascript" src="{{ static('libs/featherlight/featherlight.min.js') }}"></script>
     <script type="text/javascript" src="{{ static('vnoj/jszip/jszip.min.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tus-js-client@4/dist/tus.min.js"></script>
     <script type="text/javascript">
         window.valid_files = {{valid_files_json}}.sort();
         window.testcase_limit = {{testcase_limit}};
@@ -344,7 +345,51 @@
                 $table.trigger('add-row', [$(this)]);
             });
 
-            $('form').submit(function () {
+            $('form').submit(function (event) {
+                // If there's a zip file and size >= TUS_THRESHOLD_SIZE and tus_upload_id not set yet
+                let fileInput = $('#id_problem-data-zipfile')[0];
+                if (fileInput && fileInput.files.length > 0) {
+                    let file = fileInput.files[0];
+                    let thresholdBytes = parseInt("{{ TUS_THRESHOLD_SIZE }}");
+                    if (!isNaN(thresholdBytes) && file.size >= thresholdBytes && !$('#tus_upload_id').val()) {
+                        event.preventDefault();
+                        let submitBtn = $('#submit-button');
+                        submitBtn.attr('disabled', true);
+                        $('#tus-progress').show();
+
+                        let upload = new tus.Upload(file, {
+                            endpoint: '{{ TUSD_ENDPOINT_URL }}',
+                            chunkSize: parseInt("{{ TUS_CHUNK_SIZE }}"),
+                            retryDelays: [0, 1000, 3000, 5000],
+                            metadata: {
+                                filename: file.name,
+                                filetype: file.type || 'application/zip'
+                            },
+                            onProgress: function (bytesUploaded, bytesTotal) {
+                                let pct = Math.round(bytesUploaded / bytesTotal * 100);
+                                $('#tus-progress-bar').val(pct);
+                                $('#tus-progress-label').text(pct + '%');
+                            },
+                            onSuccess: function () {
+                                let uploadId = upload.url.split('/').pop();
+                                $('#tus_upload_id').val(uploadId);
+                                
+                                // Clear input file to prevent duplicate upload
+                                $('#id_problem-data-zipfile').val('');
+                                
+                                $('form')[0].submit();
+                            },
+                            onError: function (error) {
+                                alert('Upload failed: ' + error.message);
+                                submitBtn.attr('disabled', false);
+                                $('#tus-progress').hide();
+                            }
+                        });
+                        upload.start();
+                        return;
+                    }
+                }
+
                 $table.find('tbody:first').find('tr').each(function () {
                     var filled = false;
                     $(this).find('input, select').each(function () {
@@ -581,7 +626,8 @@
                 let fileInput = event.target.files[0];
 
                 // 100 MB limit (Cloudflare's request body size limit)
-                if (fileInput && fileInput.size > 100 * 1024 * 1024) {
+                let tusThreshold = parseInt("{{ TUS_THRESHOLD_SIZE }}");
+                if (isNaN(tusThreshold) && fileInput && fileInput.size > 100 * 1024 * 1024) {
                     alert({{ _('File too large!')|htmltojs }} + ' ' +
                         {{ _('Your file is')|htmltojs }} + ' ' + (fileInput.size / (1024 * 1024)).toFixed(2) + ' MB. ' +
                         {{ _('Maximum allowed is 100 MB.')|htmltojs }});
@@ -1093,6 +1139,11 @@
             {% endfor %}
             </tbody>
         </table>
+        <input type="hidden" name="tus_upload_id" id="tus_upload_id">
+        <div id="tus-progress" class="tus-progress" style="display:none; margin-top: 10px; margin-bottom: 10px;">
+            <progress id="tus-progress-bar" value="0" max="100" style="width:100%"></progress>
+            <span id="tus-progress-label">0%</span>
+        </div>
         <input type="submit" value="{{ _('Save') }}" class="button" id="submit-button">
         <a id="add-case-row" href="#" style="display: None;"><i class="fa fa-plus"></i> {{ _('Add new case') }}</a>
     </form>
