@@ -189,7 +189,7 @@ class Problem(models.Model):
                                                validators=[MinValueValidator(settings.DMOJ_PROBLEM_MIN_MEMORY_LIMIT),
                                                            MaxValueValidator(settings.DMOJ_PROBLEM_MAX_MEMORY_LIMIT)])
     short_circuit = models.BooleanField(default=False)
-    points = models.FloatField(verbose_name=_('points'),
+    points = models.FloatField(verbose_name=_('points'), db_index=True,
                                help_text=_('Points awarded for problem completion. '
                                            "Points are displayed with a 'p' suffix if partial."),
                                validators=[MinValueValidator(settings.DMOJ_PROBLEM_MIN_PROBLEM_POINTS)])
@@ -209,9 +209,9 @@ class Problem(models.Model):
     og_image = models.CharField(verbose_name=_('OpenGraph image'), max_length=150, blank=True)
     summary = models.TextField(blank=True, verbose_name=_('problem summary'),
                                help_text=_('Plain-text, shown in meta description tag, e.g. for social media.'))
-    user_count = models.IntegerField(verbose_name=_('number of users'), default=0,
+    user_count = models.IntegerField(verbose_name=_('number of users'), default=0, db_index=True,
                                      help_text=_('The number of users who solved the problem.'))
-    ac_rate = models.FloatField(verbose_name=_('solve rate'), default=0)
+    ac_rate = models.FloatField(verbose_name=_('solve rate'), default=0, db_index=True)
     is_full_markup = models.BooleanField(verbose_name=_('allow full markdown access'), default=False)
     submission_source_visibility_mode = models.CharField(verbose_name=_('submission source visibility'), max_length=1,
                                                          default=SubmissionSourceAccess.FOLLOW,
