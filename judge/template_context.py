@@ -7,7 +7,8 @@ from django.utils.functional import SimpleLazyObject, new_method_proxy
 
 from judge import event_poster as event
 from judge.utils.caniuse import CanIUse, SUPPORT
-from .models import NavigationBar, Profile
+from .models import Profile
+from .utils.caching import get_cached_nav_tab, get_cached_navbar
 
 
 class FixedSimpleLazyObject(SimpleLazyObject):
@@ -53,15 +54,14 @@ def comet_location(request):
 
 
 def __nav_tab(path):
-    result = list(NavigationBar.objects.extra(where=['%s REGEXP BINARY regex'], params=[path])[:1])
-    return result[0].get_ancestors(include_self=True).values_list('key', flat=True) if result else []
+    return get_cached_nav_tab(path)
 
 
 def general_info(request):
     path = request.get_full_path()
     info = {
         'nav_tab': FixedSimpleLazyObject(partial(__nav_tab, request.path)),
-        'nav_bar': NavigationBar.objects.all(),
+        'nav_bar': get_cached_navbar(),
         'LOGIN_RETURN_PATH': '' if path.startswith('/accounts/') else path,
         'REGISTRATION_OPEN': settings.REGISTRATION_OPEN,
         'perms': PermWrapper(request.user),

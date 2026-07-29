@@ -14,9 +14,10 @@ from registration.signals import user_registered
 
 from judge.caching import finished_submission
 from judge.models import BlogPost, Comment, Contest, ContestAnnouncement, ContestProblem, ContestSubmission, \
-    EFFECTIVE_MATH_ENGINES, Judge, Language, License, MiscConfig, Organization, Problem, Profile, Submission, \
-    WebAuthnCredential
+    EFFECTIVE_MATH_ENGINES, Judge, Language, License, MiscConfig, NavigationBar, Organization, Problem, Profile, \
+    Submission, WebAuthnCredential
 from judge.tasks import on_new_comment
+from judge.utils.caching import NAVBAR_CACHE_KEY, bump_nav_tab_version
 from judge.views.register import RegistrationView
 
 
@@ -64,6 +65,13 @@ def profile_update(sender, instance, **kwargs):
 
     cache.delete_many([make_template_fragment_key('user_about', (instance.id, engine))
                        for engine in EFFECTIVE_MATH_ENGINES])
+
+
+@receiver(post_save, sender=NavigationBar)
+@receiver(post_delete, sender=NavigationBar)
+def navigation_bar_update(sender, instance, **kwargs):
+    cache.delete(NAVBAR_CACHE_KEY)
+    bump_nav_tab_version()
 
 
 @receiver(post_delete, sender=WebAuthnCredential)
