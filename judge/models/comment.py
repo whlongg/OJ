@@ -94,8 +94,6 @@ class Comment(MPTTModel):
                     elif comment.page.startswith('b:'):
                         has_access = blog_access[page_key]
                         comment.page_title = blog_cache[page_key].title
-                    elif comment.page.startswith('t:'):
-                        continue
                     else:
                         has_access = True
                 except ObjectDoesNotExist:
